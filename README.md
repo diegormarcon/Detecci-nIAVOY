@@ -222,4 +222,3 @@ Este proyecto es privado y confidencial.
 ## 🤝 Contribución
 
 Para contribuir, por favor crea un issue o pull request.
-

@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: voi_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-voi_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voi_password}
+      POSTGRES_DB: ${POSTGRES_DB:-voi_detection}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voi_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: voi_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voi_backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-voi_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voi_password}
+      POSTGRES_DB: ${POSTGRES_DB:-voi_detection}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      API_HOST: 0.0.0.0
+      API_PORT: 8005
+      DEBUG: ${DEBUG:-True}
+    ports:
+      - "8005:8005"
+    volumes:
+      - ./backend:/app
+      - evidence_data:/app/evidence
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voi_frontend
+    environment:
+      VITE_API_URL: http://localhost:8005
+    ports:
+      - "3050:3050"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host --port 3050
+
+  # Detector opcional - descomentar para usar
+  # detector:
+  #   build:
+  #     context: ./detector
+  #     dockerfile: Dockerfile
+  #   container_name: voi_detector
+  #   environment:
+  #     CAMERA_ID: 1
+  #     API_URL: http://backend:8005
+  #   volumes:
+  #     - ./detector:/app
+  #     - ./videos:/app/videos
+  #   depends_on:
+  #     - backend
+  #   devices:
+  #     - /dev/video0:/dev/video0  # Para cámaras USB
+  #   command: python main.py --source 0 --camera-id 1 --api-url http://backend:8005 --display
+
+volumes:
+  postgres_data:
+  evidence_data:
